@@ -153,7 +153,6 @@ class ObjectDeleteDialog(QtWidgets.QDialog):
             btn.setText(obj.capitalize())
             self.icon_grid.addWidget(btn, row, col)
             self.object_buttons[obj] = btn
-
             btn.toggled.connect(lambda checked, b=btn: self.on_button_toggled(b, checked))
             col += 1
             if col > 2:
@@ -225,60 +224,61 @@ class ObjectDeleteDialog(QtWidgets.QDialog):
         self.cancel_button.clicked.connect(self.close)
         self.preview_button.clicked.connect(self.on_preview)
 
-
     def on_button_toggled(self, button, checked):
-
         if checked:
             button.setStyleSheet("background-color: #018A8F; color: white; border-radius: 10px; font-weight: bold;")
         else:
             button.setStyleSheet("background-color: #FFFFFF; color: #34B6BA; border-radius: 10px; font-weight: bold;")
 
     def get_selected_base_types(self):
-
         return [name for name, btn in self.object_buttons.items() if btn.isChecked()]
 
     def build_candidates(self):
         sel_bases = self.get_selected_base_types()
-
-
-        if not sel_bases:
-            return []
-
         base_name = (self.name_lineEdit.text() or "").strip()
         start_txt = self.num_start.text().strip()
         end_txt = self.num_end.text().strip()
         candidates = []
 
-        all_transforms = cmds.ls(type='transform', long=False) or []
+        all_transforms = cmds.ls(type=['transform', 'mesh', 'nurbsSurface', 'nurbsCurve'], long=False) or []
+
+        def name_matches(obj_name, keyword):
+            return keyword.lower() in obj_name.lower()
 
         if base_name and start_txt and end_txt:
             try:
                 s = int(start_txt)
                 e = int(end_txt)
                 for i in range(s, e + 1):
-                    name = f"{base_name}{i}"
-                    if cmds.objExists(name):
-                      
-                        for base in sel_bases:
-                            if base.lower() in name.lower():
-                                candidates.append(name)
-                                break
+                    pattern = f"{base_name}{i}"
+                    for obj in all_transforms:
+                        if name_matches(obj, pattern):
+                            for base in sel_bases or [""]:
+                                if not sel_bases or base.lower() in obj.lower():
+                                    candidates.append(obj)
+                                    break
             except:
                 pass
 
-
+        if not candidates:
             for obj in all_transforms:
-                for base in sel_bases:
-                    if base.lower() in obj.lower():
+                if base_name and not name_matches(obj, base_name):
+                    continue
+                for base in sel_bases or [""]:
+                    if not sel_bases or base.lower() in obj.lower():
                         candidates.append(obj)
                         break
 
-        if not candidates:
-            return []
+        final_candidates = []
+        for c in candidates:
+            if cmds.nodeType(c) != 'transform':
+                parent = cmds.listRelatives(c, parent=True, fullPath=False)
+                if parent:
+                    final_candidates.append(parent[0])
+            else:
+                final_candidates.append(c)
 
-
-        return list(dict.fromkeys(candidates))
-
+        return list(dict.fromkeys(final_candidates))
 
     def filter_by_color(self, candidates, color_name):
         if not color_name or color_name == 'All':
@@ -381,7 +381,6 @@ class ObjectDeleteDialog(QtWidgets.QDialog):
         except:
             pass
 
-
 def run():
     global ui
     try:
@@ -391,4 +390,3 @@ def run():
     ptr = wrapInstance(int(omui.MQtUtil.mainWindow()), QtWidgets.QWidget)
     ui = ObjectDeleteDialog(parent=ptr)
     ui.show()
-
